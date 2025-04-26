@@ -34,6 +34,8 @@ import Chatbot from './components/Chatbot';
 import { useSession, signOut } from "next-auth/react";
 import Link from "next/link";
 import Profile from './components/Profile';
+import { ethers } from 'ethers';
+import StickyNote from './components/StickyNote';
 
 // Add interfaces and types
 interface DonationInfo {
@@ -46,6 +48,24 @@ interface SearchResult {
   description: string;
   amount: string;
   type: string;
+}
+
+interface WalletBalance {
+  amount: string;
+  lastUpdated: number;
+}
+
+interface Scholarship {
+  id: string;
+  title: string;
+  amount: string;
+  deadline: string;
+  applicants: number;
+  tags: string[];
+  progress: number;
+  icon: string;
+  gradientClass: string;
+  category: 'STEM' | 'Arts' | 'Athletic';
 }
 
 // Custom SVG Components
@@ -107,13 +127,23 @@ const SkillIcon = () => (
   </svg>
 );
 
+// Define the type for the application data we store locally
+interface LocalApplicationData {
+  name: string;
+  email: string;
+  cgpa?: string;
+  marksPercentage?: string;
+  fieldOfStudy?: string;
+  skills: string[];
+}
+
 export default function Home() {
   const [currentPage, setCurrentPage] = useState<'home' | 'achievements'>('home');
   const [isDonateModalOpen, setIsDonateModalOpen] = useState(false);
   const [userSkills, setUserSkills] = useState<string[]>([]);
   const [skillInput, setSkillInput] = useState('');
   const [isScholarshipFormOpen, setIsScholarshipFormOpen] = useState(false);
-  const [applicationData, setApplicationData] = useState<ApplicationFormData | null>(null);
+  const [applicationData, setApplicationData] = useState<LocalApplicationData | null>(null);
   const [isWalletConnected, setIsWalletConnected] = useState(false);
   const [donationCompleted, setDonationCompleted] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -141,6 +171,19 @@ export default function Home() {
   const chatbotRef = useRef<HTMLDivElement>(null);
   const { data: session } = useSession();
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [showApplicationSuccess, setShowApplicationSuccess] = useState(false);
+  const [walletBalance, setWalletBalance] = useState<WalletBalance | null>(null);
+  const [reviews, setReviews] = useState([
+    { name: 'Jessica Wilson', avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?q=80&w=96&h=96&fit=crop', stars: 5, text: 'The Onchain Scholarship Portal made funding my education simple and transparent.' }
+  ]);
+  const [reviewText, setReviewText] = useState('');
+  const [reviewStars, setReviewStars] = useState(0);
+  const [selectedScholarship, setSelectedScholarship] = useState<Scholarship | null>(null);
+  const [showScholarshipList, setShowScholarshipList] = useState(false);
+  const [scholarshipAmount, setScholarshipAmount] = useState<string>('');
+  const [submittedScholarship, setSubmittedScholarship] = useState<Scholarship | null>(null);
+  const [fundingStatus, setFundingStatus] = useState<string | null>(null);
+  const [showStickyNote, setShowStickyNote] = useState(false);
 
   // Initialize client-side state once component is mounted
   useEffect(() => {
@@ -161,6 +204,9 @@ export default function Home() {
     if (savedData) {
       setApplicationData(JSON.parse(savedData));
     }
+
+    // Load wallet balance from localStorage
+    loadWalletBalance();
     
     // Add event listeners to track wallet connection
     const checkWalletConnection = () => {
@@ -287,7 +333,16 @@ export default function Home() {
 
   // Function to handle scholarship application submission
   const handleApplicationSubmit = (formData: ApplicationFormData) => {
-    setApplicationData(formData);
+    const localData: LocalApplicationData = {
+      name: formData.name,
+      email: formData.email,
+      cgpa: formData.cgpa,
+      marksPercentage: formData.marksPercentage,
+      fieldOfStudy: formData.fieldOfStudy,
+      skills: formData.skills,
+    };
+    
+    setApplicationData(localData);
     
     // Add the new skills from the application to the user skills
     const newSkills = formData.skills.filter(skill => !userSkills.includes(skill));
@@ -295,15 +350,50 @@ export default function Home() {
       const updatedSkills = [...userSkills, ...newSkills];
       setUserSkills(updatedSkills);
       
-      // Save to localStorage only on client side
       if (isClient) {
         localStorage.setItem('userSkills', JSON.stringify(updatedSkills));
       }
     }
     
-    // Save application data to localStorage only on client side
+    // Update wallet balance with scholarship amount if selected
+    if (selectedScholarship) {
+      const amount = parseFloat(selectedScholarship.amount.replace(/[^0-9.]/g, ''));
+      if (!isNaN(amount)) {
+        updateWalletBalance(amount.toString());
+      }
+      setSubmittedScholarship(selectedScholarship);
+      if (isClient) {
+        localStorage.setItem('submittedScholarship', JSON.stringify(selectedScholarship));
+      }
+    }
+    
     if (isClient) {
-      localStorage.setItem('applicationData', JSON.stringify(formData));
+      localStorage.setItem('applicationData', JSON.stringify(localData));
+    }
+    setShowApplicationSuccess(true);
+  };
+
+  // Function to update wallet balance when scholarship is awarded
+  const updateWalletBalance = (amount: string) => {
+    const newBalance: WalletBalance = {
+      amount,
+      lastUpdated: Date.now()
+    };
+    setWalletBalance(newBalance);
+    
+    // Save to localStorage
+    if (isClient) {
+      localStorage.setItem('walletBalance', JSON.stringify(newBalance));
+    }
+  };
+
+  // Function to load wallet balance from localStorage
+  const loadWalletBalance = () => {
+    if (isClient) {
+      const savedBalance = localStorage.getItem('walletBalance');
+      if (savedBalance) {
+        setWalletBalance(JSON.parse(savedBalance));
+      }
     }
   };
 
@@ -366,6 +456,11 @@ export default function Home() {
     const donationAmount = parseFloat(amount);
     setTotalDonations(prev => prev + donationAmount);
     setRecentDonation({ amount, timestamp: Date.now() });
+    
+    // Save total donations to localStorage
+    if (isClient) {
+      localStorage.setItem('totalDonations', (totalDonations + donationAmount).toString());
+    }
   };
 
   // Update search handling functions with proper types
@@ -420,7 +515,7 @@ export default function Home() {
     {
       id: '1',
       title: 'STEM Scholarship',
-      amount: '2.5 ETH',
+      amount: '0.08 ETH',
       deadline: 'Jun 1, 2024',
       applicants: 178,
       tags: ['Web3', 'Blockchain', 'Innovation'],
@@ -432,7 +527,7 @@ export default function Home() {
     {
       id: '2',
       title: 'Arts Scholarship',
-      amount: '1.5 ETH',
+      amount: '0.05 ETH',
       deadline: 'Jun 1, 2024',
       applicants: 178,
       tags: ['Web3', 'Blockchain', 'Innovation'],
@@ -444,7 +539,7 @@ export default function Home() {
     {
       id: '3',
       title: 'Athletic Scholarship',
-      amount: '3.0 ETH',
+      amount: '0.09 ETH',
       deadline: 'Jun 1, 2024',
       applicants: 178,
       tags: ['Web3', 'Blockchain', 'Innovation'],
@@ -607,6 +702,82 @@ export default function Home() {
     }
   };
 
+  // Load total donations from localStorage on component mount
+  useEffect(() => {
+    if (isClient) {
+      const savedTotalDonations = localStorage.getItem('totalDonations');
+      if (savedTotalDonations) {
+        setTotalDonations(parseFloat(savedTotalDonations));
+      }
+    }
+  }, [isClient]);
+
+  // Function to handle scholarship selection
+  const handleScholarshipSelect = (scholarship: Scholarship) => {
+    setSelectedScholarship(scholarship);
+    setScholarshipAmount(scholarship.amount);
+    setIsScholarshipFormOpen(true);
+    setShowScholarshipList(false);
+  };
+
+  // Function to handle scholarship application button click
+  const handleScholarshipClick = () => {
+    setShowScholarshipList(true);
+  };
+
+  // Load submitted scholarship from localStorage on mount
+  useEffect(() => {
+    if (isClient) {
+      const savedSubmitted = localStorage.getItem('submittedScholarship');
+      if (savedSubmitted) {
+        setSubmittedScholarship(JSON.parse(savedSubmitted));
+      }
+    }
+  }, [isClient]);
+
+  const CONTRACT_ADDRESS = "0xD592985d849cb4Fb7c6be70Eb7E9C3c081ccE424";
+  const CONTRACT_ABI = [
+    {
+      "inputs": [
+        { "internalType": "address", "name": "recipient", "type": "address" }
+      ],
+      "name": "fundScholarship",
+      "outputs": [],
+      "stateMutability": "payable",
+      "type": "function"
+    }
+  ];
+
+  const handleGetFunded = async () => {
+    setFundingStatus(null);
+    if (!submittedScholarship || !isWalletConnected) {
+      setFundingStatus('No scholarship or wallet not connected.');
+      return;
+    }
+    try {
+      const ethAmount = parseFloat(submittedScholarship.amount.replace(/[^0-9.]/g, ''));
+      if (!window.ethereum) {
+        setFundingStatus('MetaMask is not available.');
+        return;
+      }
+      const provider = new ethers.providers.Web3Provider(window.ethereum);
+      const signer = provider.getSigner();
+      const userAddress = await signer.getAddress();
+      // Connect to the contract
+      const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
+      // Call the contract's fundScholarship function
+      const tx = await contract.fundScholarship(
+        userAddress,
+        { value: ethers.utils.parseEther(ethAmount.toString()) }
+      );
+      setFundingStatus('Transaction sent! Waiting for confirmation...');
+      await tx.wait();
+      setFundingStatus('Funding successful! ETH transferred to your wallet.');
+    } catch (err: any) {
+      setFundingStatus('Funding failed: ' + (err?.message || JSON.stringify(err) || 'Unknown error'));
+    }
+  };
+
   return (
     <div className="min-h-screen font-sans bg-black text-white gradient-overlay">
       {/* Updated HEADER */}
@@ -620,6 +791,15 @@ export default function Home() {
             />
             <span className="brand-text text-2xl">ScholarAid</span>
           </div>
+
+          {/* To-Do List Button in Header */}
+          <button
+            onClick={() => setShowStickyNote(true)}
+            className="px-4 py-2 bg-yellow-300 text-yellow-900 font-semibold rounded-lg shadow hover:bg-yellow-200 transition-all ml-4"
+            style={{ minWidth: 120 }}
+          >
+            To-Do List
+          </button>
 
           <div className="hidden lg:flex items-center space-x-6">
             <div className="navbar-skills-container">
@@ -666,16 +846,6 @@ export default function Home() {
           </div>
 
           <nav className="flex items-center space-x-6">
-            <a 
-              href="#" 
-              className={`navbar-link ${currentPage === 'achievements' ? 'active' : ''}`}
-              onClick={(e) => {
-                e.preventDefault();
-                navigateTo('achievements');
-              }}
-            >
-              Achievements
-            </a>
             <a href="#" 
               className="navbar-link"
               onClick={handleOpenDonateModal}>
@@ -1214,10 +1384,58 @@ export default function Home() {
                         <p className="text-blue-400/80 text-sm">
                           {session && session.user ? session.user.email : "jitius0414@gmail.com"}
                         </p>
+                        {/* Academic Info: CGPA/Marks Percentage */}
+                        {applicationData && (applicationData.cgpa || applicationData.marksPercentage) && (
+                          <div className="mt-3 text-sm text-blue-300 bg-blue-900/20 rounded-lg px-4 py-2 inline-block">
+                            {applicationData.cgpa && (
+                              <span>CGPA: <span className="font-semibold text-white">{applicationData.cgpa}</span></span>
+                            )}
+                            {applicationData.cgpa && applicationData.marksPercentage && <span className="mx-2">|</span>}
+                            {applicationData.marksPercentage && (
+                              <span>Marks: <span className="font-semibold text-white">{applicationData.marksPercentage}%</span></span>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Wallet Balance Display */}
+                        {walletBalance && (
+                          <div className="mt-3 text-sm text-green-300 bg-green-900/20 rounded-lg px-4 py-2 inline-block">
+                            <span>Wallet Balance: <span className="font-semibold text-white">{walletBalance.amount} ETH</span></span>
+                            <span className="ml-2 text-xs text-green-400">
+                              (Last updated: {new Date(walletBalance.lastUpdated).toLocaleDateString()})
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Total Donations Display */}
+                        <div className="mt-3 text-sm text-blue-300 bg-blue-900/20 rounded-lg px-4 py-2 inline-block">
+                          <span>Total Donations: <span className="font-semibold text-white">{totalDonations.toFixed(2)} ETH</span></span>
+                        </div>
+
+                        {submittedScholarship && (
+                          <div className="mt-3 text-sm text-purple-300 bg-purple-900/20 rounded-lg px-4 py-2 inline-block">
+                            <span>Applied Scholarship: <span className="font-semibold text-white">{submittedScholarship.title}</span> — <span className="text-purple-200">{submittedScholarship.amount}</span></span>
+                          </div>
+                        )}
+                        {submittedScholarship && isWalletConnected && (
+                          <div className="mt-4">
+                            <button
+                              onClick={handleGetFunded}
+                              className="px-6 py-2 bg-gradient-to-r from-green-500 to-blue-500 text-white rounded-xl font-semibold shadow hover:from-green-400 hover:to-blue-400 transition-all duration-300"
+                            >
+                              Get Funded
+                            </button>
+                            {fundingStatus && (
+                              <div className="mt-2 text-sm text-center text-blue-200 bg-blue-900/30 rounded-lg px-4 py-2">
+                                {fundingStatus}
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                       
                       <button 
-                        onClick={() => setIsScholarshipFormOpen(true)}
+                        onClick={handleScholarshipClick}
                         className="mt-6 px-6 py-2.5 bg-gradient-to-r from-blue-600 to-blue-700
                                  text-white rounded-xl hover:from-blue-500 hover:to-blue-600
                                  transition-all duration-300 text-sm font-medium
@@ -1307,208 +1525,184 @@ export default function Home() {
                         </div>
                       </div>
                     </div>
-
-                    {/* Potential Scholarship Matches */}
-                    <div>
-                      <h2 className="text-2xl font-light mb-6 flex items-center gap-2">
-                        <svg className="w-5 h-5 text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" 
-                                d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
-                        </svg>
-                        Potential Scholarship Matches
-                      </h2>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {userSkills.length > 0 ? (
-                          <>
-                            <div className="bg-black/40 backdrop-blur-xl border border-blue-800/30 rounded-xl p-6 
-                                          hover:border-blue-500/50 transition-all duration-300 group/card
-                                          relative overflow-hidden">
-                              <div className="absolute inset-0 bg-gradient-to-br from-blue-600/5 to-purple-600/5 
-                                            opacity-0 group-hover/card:opacity-100 transition-all duration-500"></div>
-                              <h4 className="text-xl font-light text-white/90 mb-3">Tech Innovation Scholarship</h4>
-                              <p className="text-sm text-gray-400 mb-4">Matches your skills: {userSkills.slice(0, 2).join(', ')}</p>
-                              <div className="flex justify-between items-center">
-                                <div className="flex items-center gap-2">
-                                  <div className="p-2 bg-blue-500/20 rounded-lg">
-                                    <EthereumIcon />
-                                  </div>
-                                  <span className="text-2xl font-light text-blue-400">2.5 ETH</span>
-                                </div>
-                                <button 
-                                  onClick={() => setIsScholarshipFormOpen(true)}
-                                  className="px-4 py-2 bg-blue-600/90 hover:bg-blue-600 rounded-xl text-sm font-medium
-                                           transition-all duration-300 group-hover/card:scale-105">
-                                  <span className="relative z-10">Apply Now</span>
-                                  <div className="absolute inset-0 -translate-y-full group-hover/card:translate-y-0
-                                                bg-gradient-to-r from-blue-500 to-purple-500
-                                                transition-transform duration-500"></div>
-                                </button>
-                              </div>
-                            </div>
-
-                            <div className="bg-black/40 backdrop-blur-xl border border-blue-800/30 rounded-xl p-6
-                                          hover:border-blue-500/50 transition-all duration-300 group/card
-                                          relative overflow-hidden">
-                              <div className="absolute inset-0 bg-gradient-to-br from-purple-600/5 to-blue-600/5 
-                                            opacity-0 group-hover/card:opacity-100 transition-all duration-500"></div>
-                              <h4 className="text-xl font-light text-white/90 mb-3">Research Grant</h4>
-                              <p className="text-sm text-gray-400 mb-4">Matches your profile</p>
-                              <div className="flex justify-between items-center">
-                                <div className="flex items-center gap-2">
-                                  <div className="p-2 bg-blue-500/20 rounded-lg">
-                                    <EthereumIcon />
-                                  </div>
-                                  <span className="text-2xl font-light text-blue-400">1.8 ETH</span>
-                                </div>
-                                <button 
-                                  onClick={() => setIsScholarshipFormOpen(true)}
-                                  className="px-4 py-2 bg-blue-600/90 hover:bg-blue-600 rounded-xl text-sm font-medium
-                                           transition-all duration-300 group-hover/card:scale-105">
-                                  <span className="relative z-10">Apply Now</span>
-                                  <div className="absolute inset-0 -translate-y-full group-hover/card:translate-y-0
-                                                bg-gradient-to-r from-blue-500 to-purple-500
-                                                transition-transform duration-500"></div>
-                                </button>
-                              </div>
-                            </div>
-                          </>
-                        ) : (
-                          <div className="col-span-2 text-center py-12 text-gray-400">
-                            <svg className="w-16 h-16 mx-auto mb-4 text-blue-400/50" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" 
-                                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                            </svg>
-                            Add skills to see matching scholarships
-                          </div>
-                        )}
-                      </div>
-                    </div>
                   </div>
                 </div>
               </div>
             </section>
 
-            {/* How It Works - Moved after profile */}
+            {/* How It Works - Modern Animated Stepper */}
             <section className="mb-16">
-              <div className="flex flex-col md:flex-row justify-between">
-                <div className="w-full md:w-2/3">
-                  <h2 className="text-4xl font-bold mb-10">How It Works</h2>
-                  <div className="flex items-center space-x-4">
-                    <div className="flex flex-col items-center">
-                      <div className="w-16 h-16 border border-blue-400 rounded-lg flex items-center justify-center mb-2">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-8 h-8 text-blue-400">
-                          <rect x="2" y="4" width="20" height="16" rx="2" ry="2" strokeWidth="2" />
-                          <path strokeLinecap="round" strokeWidth="2" d="M12 12h4" />
-                        </svg>
-                      </div>
-                      <h3 className="text-center font-medium">Connect<br />Wallet</h3>
+              <div className="w-full flex flex-col items-center">
+                <h2 className="text-4xl font-bold mb-10 text-center bg-gradient-to-r from-blue-400 via-purple-400 to-blue-400 bg-clip-text text-transparent drop-shadow-lg">How It Works</h2>
+                <div className="flex flex-row items-center justify-center gap-0 md:gap-8 relative">
+                  {/* Step 1 */}
+                  <div className="group relative flex flex-col items-center z-10">
+                    <div className="w-24 h-24 rounded-2xl bg-gradient-to-br from-blue-900/80 to-blue-700/60 border-2 border-blue-500/40 shadow-xl flex items-center justify-center transition-transform duration-300 group-hover:scale-105 animate-fade-in-up">
+                      <svg className="w-12 h-12 text-blue-400 drop-shadow-glow" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <rect x="2" y="4" width="20" height="16" rx="2" ry="2" strokeWidth="2" />
+                        <path strokeLinecap="round" strokeWidth="2" d="M12 12h4" />
+                      </svg>
                     </div>
-
-                    <div className="text-blue-400 font-bold">→</div>
-
-                    <div className="flex flex-col items-center">
-                      <div className="w-16 h-16 border border-blue-400 rounded-lg flex items-center justify-center mb-2">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-8 h-8 text-blue-400">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-                        </svg>
-                      </div>
-                      <h3 className="text-center font-medium">Submit<br />Application</h3>
-                    </div>
-
-                    <div className="text-blue-400 font-bold">→</div>
-
-                    <div className="flex flex-col items-center">
-                      <div className="w-16 h-16 border border-blue-400 rounded-full flex items-center justify-center mb-2">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-8 h-8 text-blue-400">
-                          <circle cx="12" cy="12" r="10" strokeWidth="2" />
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6l4 2" />
-                        </svg>
-                      </div>
-                      <h3 className="text-center font-medium">Get Funded</h3>
+                    <span className="mt-4 text-lg font-semibold text-blue-300">Connect Wallet</span>
+                    <div className="absolute left-1/2 -bottom-10 -translate-x-1/2 opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-300 z-20">
+                      <div className="bg-blue-900/90 text-white text-sm rounded-xl px-4 py-2 shadow-lg border border-blue-500/30 animate-pop-up">Securely connect your crypto wallet to get started.</div>
                     </div>
                   </div>
-                </div>
-
-                <div className="w-full md:w-1/3 mt-8 md:mt-0">
-                  <div className="bg-black border border-blue-800 rounded-lg p-4">
-                  
-<div className="relative">
-  <button 
-    className="w-full p-3 text-left flex items-center justify-between bg-black text-white rounded-lg mb-4 border border-blue-800 hover:border-blue-400 transition-colors"
-    onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-  >
-    <span>{selectedType || "Type of Applicant"}</span>
-    <svg 
-      xmlns="http://www.w3.org/2000/svg" 
-      viewBox="0 0 24 24" 
-      fill="none" 
-      stroke="currentColor" 
-      className={`w-5 h-5 transform transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`}
-    >
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-    </svg>
-  </button>
-  
-  {isDropdownOpen && (
-    <div className="absolute w-full bg-gray-900 border border-blue-800 rounded-lg mt-1 py-2 z-10">
-      {[
-        'Undergraduate Student',
-        'Graduate Student',
-        'High School Senior',
-        'International Student',
-        'Transfer Student',
-        'First-Generation Student',
-        'Research Scholar'
-      ].map((type) => (
-        <button
-          key={type}
-          className="w-full px-4 py-2 text-left hover:bg-blue-900 transition-colors"
-          onClick={() => {
-            setSelectedType(type);
-            setIsDropdownOpen(false);
-          }}
-        >
-          {type}
-        </button>
-      ))}
-    </div>
-  )}
-
-<button 
-  className={`w-full py-3 text-white rounded-lg text-xl font-bold ${
-    selectedType 
-      ? 'bg-blue-500 hover:bg-blue-600' 
-      : 'bg-blue-500/50 cursor-not-allowed'
-  } transition-colors`}
-  disabled={!selectedType}
-  onClick={()=> setIsApplicationFormOpen(true)}
->
-
-
-  Apply Now
-</button></div>
+                  {/* Arrow 1 */}
+                  <div className="flex items-center z-0" style={{ height: '120px' }}>
+                    <svg className="w-16 h-8 md:h-16 text-blue-400 animate-bounce-x" style={{ alignSelf: 'center' }} fill="none" viewBox="0 0 48 48" stroke="currentColor">
+                      <defs>
+                        <linearGradient id="arrow1" x1="0" y1="0" x2="1" y2="1">
+                          <stop offset="0%" stopColor="#60A5FA" />
+                          <stop offset="100%" stopColor="#A78BFA" />
+                        </linearGradient>
+                      </defs>
+                      <path d="M8 24h32M32 16l8 8-8 8" stroke="url(#arrow1)" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </div>
+                  {/* Step 2 */}
+                  <div className="group relative flex flex-col items-center z-10">
+                    <div className="w-24 h-24 rounded-2xl bg-gradient-to-br from-purple-900/80 to-purple-700/60 border-2 border-purple-500/40 shadow-xl flex items-center justify-center transition-transform duration-300 group-hover:scale-105 animate-fade-in-up delay-100">
+                      <svg className="w-12 h-12 text-purple-400 drop-shadow-glow" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                      </svg>
+                    </div>
+                    <span className="mt-4 text-lg font-semibold text-purple-300">Submit Application</span>
+                    <div className="absolute left-1/2 -bottom-10 -translate-x-1/2 opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-300 z-20">
+                      <div className="bg-purple-900/90 text-white text-sm rounded-xl px-4 py-2 shadow-lg border border-purple-500/30 animate-pop-up">Fill out and submit your scholarship application.</div>
+                    </div>
+                  </div>
+                  {/* Arrow 2 */}
+                  <div className="flex items-center z-0" style={{ height: '120px' }}>
+                    <svg className="w-16 h-8 md:h-16 text-purple-400 animate-bounce-x" style={{ alignSelf: 'center' }} fill="none" viewBox="0 0 48 48" stroke="currentColor">
+                      <defs>
+                        <linearGradient id="arrow2" x1="0" y1="0" x2="1" y2="1">
+                          <stop offset="0%" stopColor="#A78BFA" />
+                          <stop offset="100%" stopColor="#34D399" />
+                        </linearGradient>
+                      </defs>
+                      <path d="M8 24h32M32 16l8 8-8 8" stroke="url(#arrow2)" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </div>
+                  {/* Step 3 */}
+                  <div className="group relative flex flex-col items-center z-10">
+                    <div className="w-24 h-24 rounded-2xl bg-gradient-to-br from-green-900/80 to-green-700/60 border-2 border-green-500/40 shadow-xl flex items-center justify-center transition-transform duration-300 group-hover:scale-105 animate-fade-in-up delay-200">
+                      <svg className="w-12 h-12 text-green-400 drop-shadow-glow" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <circle cx="12" cy="12" r="10" strokeWidth="2" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6l4 2" />
+                      </svg>
+                    </div>
+                    <span className="mt-4 text-lg font-semibold text-green-300">Get Funded</span>
+                    <div className="absolute left-1/2 -bottom-10 -translate-x-1/2 opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-300 z-20">
+                      <div className="bg-green-900/90 text-white text-sm rounded-xl px-4 py-2 shadow-lg border border-green-500/30 animate-pop-up">Receive your scholarship funds directly to your wallet.</div>
+                    </div>
                   </div>
                 </div>
               </div>
+              {/* Animations */}
+              <style jsx>{`
+                @keyframes bounce-x {
+                  0%, 100% { transform: translateX(0); }
+                  50% { transform: translateX(12px); }
+                }
+                .animate-bounce-x { animation: bounce-x 1.2s infinite; }
+                @keyframes fade-in-up {
+                  0% { opacity: 0; transform: translateY(40px) scale(0.95); }
+                  100% { opacity: 1; transform: translateY(0) scale(1); }
+                }
+                .animate-fade-in-up { animation: fade-in-up 0.8s cubic-bezier(0.22, 1, 0.36, 1) both; }
+                .delay-100 { animation-delay: 0.15s; }
+                .delay-200 { animation-delay: 0.3s; }
+                @keyframes pop-up {
+                  0% { opacity: 0; transform: scale(0.8); }
+                  100% { opacity: 1; transform: scale(1); }
+                }
+                .animate-pop-up { animation: pop-up 0.3s cubic-bezier(0.22, 1, 0.36, 1) both; }
+                .drop-shadow-glow { filter: drop-shadow(0 0 8px #60A5FA88); }
+              `}</style>
             </section>
 
-            {/* Testimonial */}
+            {/* Testimonial - Modern Bento Box with Reviews */}
             <section className="mb-16">
-              <div className="bg-black border border-blue-800 rounded-lg p-8">
-                <div className="flex items-start">
-                  <div className="flex-shrink-0 mr-6">
-                    <div className="w-24 h-24 rounded-full overflow-hidden">
-                    <img 
-            src="https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?q=80&w=96&h=96&fit=crop"
-            alt="Jessica Wilson" 
-            className="w-full h-full object-cover" 
-          />
+              <div className="bg-white/90 border border-blue-400/40 rounded-2xl p-8 shadow-2xl max-w-3xl mx-auto flex flex-col gap-8">
+                <h2 className="text-2xl font-bold text-blue-900 mb-4">User Reviews</h2>
+                {/* Review Submission */}
+                <form
+                  className="flex flex-col md:flex-row items-center gap-4 bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl p-4 shadow"
+                  onSubmit={e => {
+                    e.preventDefault();
+                    if (reviewText.trim() && reviewStars > 0) {
+                      setReviews(prev => [
+                        { name: session?.user?.name || 'Anonymous', avatar: session?.user?.image || '', stars: reviewStars, text: reviewText },
+                        ...prev,
+                      ]);
+                      setReviewText('');
+                      setReviewStars(0);
+                    }
+                  }}
+                >
+                  <div className="flex items-center gap-3">
+                    <img
+                      src={session?.user?.image || 'https://randomuser.me/api/portraits/lego/1.jpg'}
+                      alt="User Avatar"
+                      className="w-12 h-12 rounded-full border-2 border-blue-300 shadow"
+                    />
+                    <span className="font-semibold text-blue-900">{session?.user?.name || 'Anonymous'}</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {[1,2,3,4,5].map(star => (
+                      <button
+                        key={star}
+                        type="button"
+                        className={`text-2xl transition-transform duration-150 ${reviewStars >= star ? 'text-yellow-400 scale-110' : 'text-gray-300'}`}
+                        onClick={() => setReviewStars(star)}
+                        aria-label={`Rate ${star} star${star > 1 ? 's' : ''}`}
+                      >
+                        ★
+                      </button>
+                    ))}
+                  </div>
+                  <input
+                    type="text"
+                    value={reviewText}
+                    onChange={e => setReviewText(e.target.value)}
+                    placeholder="Write your review..."
+                    className="flex-1 px-4 py-2 rounded-lg border border-blue-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-200 transition bg-white text-blue-900 placeholder-blue-400"
+                    maxLength={120}
+                    required
+                  />
+                  <button
+                    type="submit"
+                    className="px-6 py-2 rounded-lg bg-gradient-to-r from-blue-500 to-purple-500 text-white font-semibold shadow hover:from-blue-400 hover:to-purple-400 transition-all"
+                  >
+                    Submit
+                  </button>
+                </form>
+                {/* Reviews Display */}
+                <div className="flex flex-col gap-6">
+                  {reviews.length === 0 && (
+                    <div className="text-blue-400/70 text-center py-6">No reviews yet. Be the first to leave one!</div>
+                  )}
+                  {reviews.map((review, idx) => (
+                    <div key={idx} className="flex items-start gap-4 bg-white/80 rounded-xl p-4 border border-blue-100 shadow-sm hover:shadow-lg transition-all">
+                      <img
+                        src={review.avatar || 'https://randomuser.me/api/portraits/lego/1.jpg'}
+                        alt="User Avatar"
+                        className="w-14 h-14 rounded-full border-2 border-blue-200 shadow"
+                      />
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="font-semibold text-blue-900">{review.name}</span>
+                          <span className="flex gap-0.5">
+                            {[1,2,3,4,5].map(star => (
+                              <span key={star} className={`text-lg ${review.stars >= star ? 'text-yellow-400' : 'text-gray-300'}`}>★</span>
+                            ))}
+                          </span>
+                        </div>
+                        <div className="text-blue-800 text-base">{review.text}</div>
+                      </div>
                     </div>
-                  </div>
-                  <div>
-                    <p className="text-xl mb-4">"The Onchain Scholarship Portal made funding my education simple and transparent."</p>
-                    <p className="text-blue-400 font-medium">Jessica Wilson</p>
-                  </div>
+                  ))}
                 </div>
               </div>
             </section>
@@ -1539,8 +1733,21 @@ export default function Home() {
 
       <ScholarshipApplicationForm
         isOpen={isScholarshipFormOpen}
-        onClose={() => setIsScholarshipFormOpen(false)}
-        onSubmit={handleApplicationSubmit}
+        onClose={() => {
+          setIsScholarshipFormOpen(false);
+          setSelectedScholarship(null);
+        }}
+        onSubmit={(formData) => {
+          handleApplicationSubmit(formData);
+          // Update wallet balance when scholarship is awarded
+          if (selectedScholarship) {
+            const amount = parseFloat(selectedScholarship.amount.replace(/[^0-9.]/g, ''));
+            if (!isNaN(amount)) {
+              updateWalletBalance(amount.toString());
+            }
+          }
+        }}
+        selectedScholarship={selectedScholarship}
       />
 
       {/* Add Profile button in the navbar */}
@@ -1558,6 +1765,78 @@ export default function Home() {
 
       {/* Add Profile modal */}
       <Profile isOpen={isProfileOpen} onClose={() => setIsProfileOpen(false)} />
+
+      {/* Application Success Modal */}
+      {showApplicationSuccess && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div className="bg-gradient-to-br from-blue-900/90 to-purple-900/90 border border-blue-400/30 rounded-2xl p-8 max-w-md w-full text-center shadow-2xl">
+            <svg className="mx-auto mb-4 w-16 h-16 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4" />
+              <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
+            </svg>
+            <h2 className="text-2xl font-semibold mb-2 text-white">Application Submitted!</h2>
+            <p className="text-blue-200 mb-6">Your scholarship application was submitted successfully. We will review your details and contact you soon.</p>
+            <button
+              onClick={() => setShowApplicationSuccess(false)}
+              className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showScholarshipList && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div className="bg-gradient-to-br from-blue-900/90 to-purple-900/90 border border-blue-400/30 rounded-2xl p-8 max-w-4xl w-full shadow-2xl">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-semibold text-white">Available Scholarships</h2>
+              <button 
+                onClick={() => setShowScholarshipList(false)}
+                className="text-blue-400 hover:text-blue-300 transition-colors"
+              >
+                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {featuredScholarships.map((scholarship) => (
+                <div
+                  key={scholarship.id}
+                  onClick={() => handleScholarshipSelect(scholarship)}
+                  className="bg-white/5 border border-blue-500/30 rounded-xl p-6 cursor-pointer
+                           hover:border-blue-500/50 hover:bg-white/10 transition-all duration-300"
+                >
+                  <div className="flex items-center gap-4 mb-4">
+                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-purple-500 
+                                  flex items-center justify-center text-white text-xl">
+                      {scholarship.icon}
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-semibold text-white">{scholarship.title}</h3>
+                      <p className="text-blue-400">{scholarship.amount}</p>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2 mt-4">
+                    {scholarship.tags.map((tag, index) => (
+                      <span
+                        key={index}
+                        className="px-3 py-1 bg-blue-500/20 border border-blue-500/30 rounded-full text-sm text-blue-300"
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showStickyNote && <StickyNote onClose={() => setShowStickyNote(false)} />}
     </div>
   );
 }

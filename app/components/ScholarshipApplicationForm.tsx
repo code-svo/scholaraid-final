@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 export interface ApplicationFormData {
   name: string;
@@ -9,18 +9,27 @@ export interface ApplicationFormData {
   interest: string;
   skills: string[];
   additionalInfo: string;
+  cgpa?: string;
+  marksPercentage?: string;
+  amount?: string;
+  fieldOfStudy?: string;
 }
 
 interface ScholarshipApplicationFormProps {
   isOpen: boolean;
   onClose: () => void;
   onSubmit: (data: ApplicationFormData) => void;
+  selectedScholarship?: {
+    title: string;
+    amount: string;
+  } | null;
 }
 
 export default function ScholarshipApplicationForm({
   isOpen,
   onClose,
   onSubmit,
+  selectedScholarship,
 }: ScholarshipApplicationFormProps) {
   const [formData, setFormData] = useState<ApplicationFormData>({
     name: '',
@@ -29,11 +38,20 @@ export default function ScholarshipApplicationForm({
     interest: '',
     skills: [],
     additionalInfo: '',
+    cgpa: '',
+    marksPercentage: '',
+    amount: '0',
   });
   const [currentSkill, setCurrentSkill] = useState('');
+  const [error, setError] = useState('');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!formData.cgpa && !formData.marksPercentage) {
+      setError('Please provide either CGPA or Marks Percentage.');
+      return;
+    }
+    setError('');
     onSubmit(formData);
     onClose();
   };
@@ -55,6 +73,18 @@ export default function ScholarshipApplicationForm({
     }));
   };
 
+  useEffect(() => {
+    const scholarshipAmounts = {
+      'STEM': '2.5',
+      'Arts': '1.5',
+      'Athletic': '3.0'
+    };
+    setFormData(prev => ({
+      ...prev,
+      amount: scholarshipAmounts[formData.scholarshipType] || '0'
+    }));
+  }, [formData.scholarshipType]);
+
   if (!isOpen) return null;
 
   return (
@@ -72,8 +102,20 @@ export default function ScholarshipApplicationForm({
             </svg>
           </button>
         </div>
+        {/* Show selected scholarship amount if available */}
+        {selectedScholarship && (
+          <div className="p-4 bg-blue-900/20 text-blue-200 text-lg font-semibold text-center">
+            Applying for: {selectedScholarship.title} — Amount: {selectedScholarship.amount}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
+          {/* Error Message */}
+          {error && (
+            <div className="text-red-400 bg-red-900/30 border border-red-400/30 rounded-lg px-4 py-2 mb-2">
+              {error}
+            </div>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Name Input */}
             <div className="space-y-2">
@@ -144,6 +186,57 @@ export default function ScholarshipApplicationForm({
                        focus:ring-blue-500/20 transition-all duration-200"
               placeholder="e.g. Computer Science, Fine Arts, etc."
             />
+          </div>
+
+          {/* Field of Study */}
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-blue-400">
+              Field of Study <span className="text-red-400">*</span>
+            </label>
+            <input
+              type="text"
+              required
+              value={formData.fieldOfStudy}
+              onChange={e => setFormData(prev => ({ ...prev, fieldOfStudy: e.target.value }))}
+              className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg 
+                       text-white placeholder-gray-500 focus:border-blue-500 focus:ring-2 
+                       focus:ring-blue-500/20 transition-all duration-200"
+              placeholder="e.g. Computer Science, Mechanical Engineering, etc."
+            />
+          </div>
+
+          {/* CGPA and Marks Percentage */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-blue-400">
+                CGPA
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                max="10"
+                value={formData.cgpa}
+                onChange={e => setFormData(prev => ({ ...prev, cgpa: e.target.value }))}
+                className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
+                placeholder="e.g. 8.75"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-blue-400">
+                Marks Percentage
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                max="100"
+                value={formData.marksPercentage}
+                onChange={e => setFormData(prev => ({ ...prev, marksPercentage: e.target.value }))}
+                className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
+                placeholder="e.g. 92.5"
+              />
+            </div>
           </div>
 
           {/* Skills */}
