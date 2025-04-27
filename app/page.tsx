@@ -142,6 +142,9 @@ export default function Home() {
   const [isDonateModalOpen, setIsDonateModalOpen] = useState(false);
   const [userSkills, setUserSkills] = useState<string[]>([]);
   const [skillInput, setSkillInput] = useState('');
+  const [newSkill, setNewSkill] = useState('');
+  const [fundingStatus, setFundingStatus] = useState<'pending' | 'approved' | 'rejected'>('pending');
+  const [fundingStatusMessage, setFundingStatusMessage] = useState<string>('');
   const [isScholarshipFormOpen, setIsScholarshipFormOpen] = useState(false);
   const [applicationData, setApplicationData] = useState<LocalApplicationData | null>(null);
   const [isWalletConnected, setIsWalletConnected] = useState(false);
@@ -165,8 +168,6 @@ export default function Home() {
   const [recentDonation, setRecentDonation] = useState<DonationInfo | null>(null);
   const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
   const [skills, setSkills] = useState(['React', 'TypeScript', 'Node.js']);
-  const [newSkill, setNewSkill] = useState('');
-  const [isEditing, setIsEditing] = useState(false);
   const [kolkataTime, setKolkataTime] = useState('');
   const chatbotRef = useRef<HTMLDivElement>(null);
   const { data: session } = useSession();
@@ -176,14 +177,13 @@ export default function Home() {
   const [reviews, setReviews] = useState([
     { name: 'Jessica Wilson', avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?q=80&w=96&h=96&fit=crop', stars: 5, text: 'The Onchain Scholarship Portal made funding my education simple and transparent.' }
   ]);
-  const [reviewText, setReviewText] = useState('');
-  const [reviewStars, setReviewStars] = useState(0);
   const [selectedScholarship, setSelectedScholarship] = useState<Scholarship | null>(null);
   const [showScholarshipList, setShowScholarshipList] = useState(false);
   const [scholarshipAmount, setScholarshipAmount] = useState<string>('');
   const [submittedScholarship, setSubmittedScholarship] = useState<Scholarship | null>(null);
-  const [fundingStatus, setFundingStatus] = useState<string | null>(null);
   const [showStickyNote, setShowStickyNote] = useState(false);
+  const [reviewText, setReviewText] = useState('');
+  const [reviewStars, setReviewStars] = useState(0);
 
   // Initialize client-side state once component is mounted
   useEffect(() => {
@@ -749,15 +749,16 @@ export default function Home() {
   ];
 
   const handleGetFunded = async () => {
-    setFundingStatus(null);
+    setFundingStatus('pending');
+    setFundingStatusMessage('');
     if (!submittedScholarship || !isWalletConnected) {
-      setFundingStatus('No scholarship or wallet not connected.');
+      setFundingStatusMessage('No scholarship or wallet not connected.');
       return;
     }
     try {
       const ethAmount = parseFloat(submittedScholarship.amount.replace(/[^0-9.]/g, ''));
       if (!window.ethereum) {
-        setFundingStatus('MetaMask is not available.');
+        setFundingStatusMessage('MetaMask is not available.');
         return;
       }
       const provider = new ethers.providers.Web3Provider(window.ethereum);
@@ -770,11 +771,13 @@ export default function Home() {
         userAddress,
         { value: ethers.utils.parseEther(ethAmount.toString()) }
       );
-      setFundingStatus('Transaction sent! Waiting for confirmation...');
+      setFundingStatusMessage('Transaction sent! Waiting for confirmation...');
       await tx.wait();
-      setFundingStatus('Funding successful! ETH transferred to your wallet.');
+      setFundingStatus('approved');
+      setFundingStatusMessage('Funding successful! ETH transferred to your wallet.');
     } catch (err: any) {
-      setFundingStatus('Funding failed: ' + (err?.message || JSON.stringify(err) || 'Unknown error'));
+      setFundingStatus('rejected');
+      setFundingStatusMessage('Funding failed: ' + (err?.message || JSON.stringify(err) || 'Unknown error'));
     }
   };
 
@@ -1425,9 +1428,9 @@ export default function Home() {
                             >
                               Get Funded
                             </button>
-                            {fundingStatus && (
+                            {fundingStatusMessage && (
                               <div className="mt-2 text-sm text-center text-blue-200 bg-blue-900/30 rounded-lg px-4 py-2">
-                                {fundingStatus}
+                                {fundingStatusMessage}
                               </div>
                             )}
                           </div>
