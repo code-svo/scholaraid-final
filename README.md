@@ -25,9 +25,9 @@ Our project is a real-time educational scholarship portal where applicants are o
 RoastedCode
 
 ### Team Members:  
-- Shubhajit Sarkar ([Github](https://github.com/code-svo) / [LinkedIn](www.linkedin.com/in/withshubhajit)/ Team Leader- UI/UX Designer,Frontend Dev)
-- Souvik Roy  ([GitHub](https://github.com/Souvik313) / [LinkedIn](www.linkedin.com/in/souvik-roy-a8ab04337) / Team member) 
-- Sugata Bhanja ([Github](https://github.com/SUGATABHANJA) / [LinkedIn](www.linkedin.com/in/sugata-bhanja-aa1110310) / Team member)
+- Shubhajit Sarkar ([Github](https://github.com/code-svo) / www.linkedin.com/in/withshubhajit/ Team Leader- UI/UX Designer,Frontend Dev)
+- Souvik Roy  ([GitHub](https://github.com/Souvik313) / www.linkedin.com/in/souvik-roy-a8ab04337 / Team member) 
+- Sugata Bhanja ([Github](https://github.com/SUGATABHANJA) / www.linkedin.com/in/sugata-bhanja-aa1110310 / Team member)
 - Joydip Dewasi ( couldnt participate due to medical emergency-Team member)
 
 
