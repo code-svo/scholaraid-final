@@ -12,20 +12,6 @@ const DonationModal: FC<DonationModalProps> = ({ isOpen, onClose, onDonationComp
   const [message, setMessage] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const [isWalletConnected, setIsWalletConnected] = useState<boolean>(false);
-
-  // Check if wallet is connected on mount and when modal opens
-  useEffect(() => {
-    if (!isOpen) return;
-    
-    // For demo purposes, we'll mock the wallet connection
-    // In a real app, you would check the actual wallet connection
-    setIsWalletConnected(true);
-    
-    // You can use this localStorage check for real implementation
-    // const walletStore = localStorage.getItem('walletConnected');
-    // setIsWalletConnected(walletStore === 'true');
-  }, [isOpen]);
 
   const handlePresetAmount = (preset: string) => {
     setAmount(preset);
@@ -224,7 +210,7 @@ const DonationModal: FC<DonationModalProps> = ({ isOpen, onClose, onDonationComp
               <span>Donation will be processed on Base Sepolia testnet</span>
             </div>
             <div className="flex flex-col items-center gap-1 text-sm">
-              <p className="text-gray-500">You'll need Base Sepolia ETH in your wallet</p>
+              <p className="text-gray-500">You&apos;ll need Base Sepolia ETH in your wallet</p>
               <a 
                 href="https://sepolia-faucet.base.org/" 
                 target="_blank" 

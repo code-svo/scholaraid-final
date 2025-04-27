@@ -111,9 +111,9 @@ export default function TopApplicants() {
           </svg>
         </button>
         <div className="flex flex-row justify-center items-stretch gap-10 w-full max-w-xl">
-          {applicants.slice(startIdx, startIdx + 2).map((app, idx) => (
-            <div key={app.name} className="flex flex-col items-center bg-white/5 border border-white/10 rounded-2xl p-6 min-w-[160px] max-w-[200px] shadow hover:shadow-lg transition-all duration-300">
-              <div className="mb-2">{vectorAvatars[app.avatar]}</div>
+          {applicants.slice(startIdx, startIdx + 2).map((app, index) => (
+            <div key={`applicant-${index}`} className="flex flex-col items-center bg-white/5 border border-white/10 rounded-2xl p-6 min-w-[160px] max-w-[200px] shadow hover:shadow-lg transition-all duration-300">
+              <div className="mb-2" key={`avatar-${app.avatar}`}>{vectorAvatars[app.avatar]}</div>
               <span className="font-medium text-white mb-1 text-center text-base">{app.name}</span>
               <div className="flex items-center gap-2 mt-1 mb-3">
                 {statusIcons[app.status]}

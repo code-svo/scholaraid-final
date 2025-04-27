@@ -137,7 +137,7 @@ export default function RecentDonations({ refreshTrigger }: RecentDonationsProps
               <div className="donation-info">
                 <span className="donation-address">{formatAddress(donation.donor)}</span>
                 {donation.message && (
-                  <p className="donation-message">"{donation.message}"</p>
+                  <p className="donation-message">&quot;{donation.message}&quot;</p>
                 )}
                 <span className="donation-time">{formatDate(donation.timestamp)}</span>
               </div>

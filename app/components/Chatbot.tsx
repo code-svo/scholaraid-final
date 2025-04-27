@@ -77,11 +77,17 @@ export default function Chatbot() {
         content: data.choices[0].message.content
       };
       setMessages(prev => [...prev, assistantMessage]);
-    } catch (error: any) {
-      console.error('Network or unexpected error:', error);
+    } catch (error: unknown) {
+      let errorMsg = 'Sorry, I encountered a network error. Please try again.';
+      if (error instanceof Error) {
+        console.error('Network or unexpected error:', error.message);
+        errorMsg = error.message;
+      } else {
+        console.error('Network or unexpected error:', error);
+      }
       setMessages(prev => [...prev, {
         role: 'assistant',
-        content: 'Sorry, I encountered a network error. Please try again.'
+        content: errorMsg
       }]);
     } finally {
       setIsLoading(false);

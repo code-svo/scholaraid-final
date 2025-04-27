@@ -1,8 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import type { MouseEvent } from 'react';
-import type { MouseEvent as ReactMouseEvent } from 'react';
 import debounce from 'lodash/debounce';
 import DonationModal from './components/DonationModal';
 import RecentDonations from './components/RecentDonations';
@@ -25,17 +24,13 @@ import {
   EthBalance,
 } from '@coinbase/onchainkit/identity';
 import { getCurrentUser, logoutUser } from './utils/authUtils';
-import dynamic from 'next/dynamic';
-import { ProfileVector } from './components/vectors/ProfileVector';
-import { EthVector } from './components/vectors/EthVector';
-import FaqBentoBox from './components/FaqBentoBox';
-import TopApplicants from './components/TopApplicants';
 import Chatbot from './components/Chatbot';
-import { useSession, signOut } from "next-auth/react";
+import { useSession } from "next-auth/react";
 import Link from "next/link";
 import Profile from './components/Profile';
 import { ethers } from 'ethers';
 import StickyNote from './components/StickyNote';
+import Image from 'next/image';
 
 // Add interfaces and types
 interface DonationInfo {
@@ -70,8 +65,9 @@ interface Scholarship {
 
 // Custom SVG Components
 const EthereumIcon = () => (
-  <svg viewBox="0 0 24 24" className="w-6 h-6 text-blue-400">
-    <path fill="currentColor" d="M11.944 17.97L4.58 13.62 11.943 24l7.37-10.38-7.372 4.35h.003zM12.056 0L4.69 12.223l7.365 4.354 7.365-4.35L12.056 0z"/>
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M12 2L4 12L12 16L20 12L12 2Z" fill="#627EEA"/>
+    <path d="M4 12L12 22L20 12L12 16L4 12Z" fill="#627EEA"/>
   </svg>
 );
 
@@ -85,45 +81,6 @@ const TimeIcon = () => (
 const LightningIcon = () => (
   <svg viewBox="0 0 24 24" className="w-4 h-4 text-yellow-500">
     <path fill="currentColor" d="M7 2v11h3v9l7-12h-4l4-8z"/>
-  </svg>
-);
-
-// Add TypeScript interfaces
-interface DonationInfo {
-  amount: string;
-  timestamp: number;
-}
-
-interface Scholarship {
-  id: string;
-  title: string;
-  amount: string;
-  deadline: string;
-  applicants: number;
-  tags: string[];
-  progress: number;
-  icon: string;
-  gradientClass: string;
-  category: 'STEM' | 'Arts' | 'Athletic';
-}
-
-// Add new vector components at the top with existing SVG components
-const UserAvatarVector = () => (
-  <svg viewBox="0 0 24 24" className="w-20 h-20 text-blue-400">
-    <defs>
-      <linearGradient id="avatarGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%" stopColor="#4F46E5"/>
-        <stop offset="100%" stopColor="#60A5FA"/>
-      </linearGradient>
-    </defs>
-    <circle cx="12" cy="8" r="5" fill="url(#avatarGradient)"/>
-    <path fill="url(#avatarGradient)" d="M2 20.5c0-2.5 4.5-5.5 10-5.5s10 3 10 5.5V22H2v-1.5z"/>
-  </svg>
-);
-
-const SkillIcon = () => (
-  <svg viewBox="0 0 24 24" className="w-5 h-5 text-blue-400">
-    <path fill="currentColor" d="M12 2L1 12h3v9h6v-6h4v6h6v-9h3L12 2zm0 2.7L19.3 11H18v9h-4v-6H8v6H4v-9H2.7L12 4.7z"/>
   </svg>
 );
 
@@ -142,19 +99,13 @@ export default function Home() {
   const [isDonateModalOpen, setIsDonateModalOpen] = useState(false);
   const [userSkills, setUserSkills] = useState<string[]>([]);
   const [skillInput, setSkillInput] = useState('');
-  const [newSkill, setNewSkill] = useState('');
-  const [fundingStatus, setFundingStatus] = useState<'pending' | 'approved' | 'rejected'>('pending');
-  const [fundingStatusMessage, setFundingStatusMessage] = useState<string>('');
   const [isScholarshipFormOpen, setIsScholarshipFormOpen] = useState(false);
   const [applicationData, setApplicationData] = useState<LocalApplicationData | null>(null);
   const [isWalletConnected, setIsWalletConnected] = useState(false);
-  const [donationCompleted, setDonationCompleted] = useState(false);
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [selectedType, setSelectedType] = useState('');
   const [isApplicationFormOpen, setIsApplicationFormOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isClient, setIsClient] = useState(false);
-  const [user, setUser] = useState<{ id: string; name: string; email: string } | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [selectedFilter, setSelectedFilter] = useState<'All' | 'STEM' | 'Arts' | 'Athletic'>('All');
@@ -167,10 +118,6 @@ export default function Home() {
   const [totalDonations, setTotalDonations] = useState(0);
   const [recentDonation, setRecentDonation] = useState<DonationInfo | null>(null);
   const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
-  const [skills, setSkills] = useState(['React', 'TypeScript', 'Node.js']);
-  const [kolkataTime, setKolkataTime] = useState('');
-  const chatbotRef = useRef<HTMLDivElement>(null);
-  const { data: session } = useSession();
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [showApplicationSuccess, setShowApplicationSuccess] = useState(false);
   const [walletBalance, setWalletBalance] = useState<WalletBalance | null>(null);
@@ -179,11 +126,70 @@ export default function Home() {
   ]);
   const [selectedScholarship, setSelectedScholarship] = useState<Scholarship | null>(null);
   const [showScholarshipList, setShowScholarshipList] = useState(false);
-  const [scholarshipAmount, setScholarshipAmount] = useState<string>('');
   const [submittedScholarship, setSubmittedScholarship] = useState<Scholarship | null>(null);
   const [showStickyNote, setShowStickyNote] = useState(false);
   const [reviewText, setReviewText] = useState('');
   const [reviewStars, setReviewStars] = useState(0);
+  const chatbotRef = useRef<HTMLDivElement>(null);
+  const { data: session } = useSession();
+  const [fundingStatusMessage, setFundingStatusMessage] = useState<string>('');
+  const [donationCompleted, setDonationCompleted] = useState(false);
+  const [featuredScholarships, setFeaturedScholarships] = useState<Scholarship[]>([
+    {
+      id: '1',
+      title: 'STEM Scholarship',
+      amount: '0.08 ETH',
+      deadline: 'Jun 1, 2024',
+      applicants: 178,
+      tags: ['Web3', 'Blockchain', 'Innovation'],
+      progress: 65,
+      icon: '🧬',
+      gradientClass: 'from-blue-900/40 to-blue-800/10',
+      category: 'STEM'
+    },
+    {
+      id: '2',
+      title: 'Arts Scholarship',
+      amount: '0.05 ETH',
+      deadline: 'Jun 1, 2024',
+      applicants: 178,
+      tags: ['Web3', 'Blockchain', 'Innovation'],
+      progress: 65,
+      icon: '🎨',
+      gradientClass: 'from-purple-900/40 to-purple-800/10',
+      category: 'Arts'
+    },
+    {
+      id: '3',
+      title: 'Athletic Scholarship',
+      amount: '0.09 ETH',
+      deadline: 'Jun 1, 2024',
+      applicants: 178,
+      tags: ['Web3', 'Blockchain', 'Innovation'],
+      progress: 65,
+      icon: '⚽',
+      gradientClass: 'from-teal-900/40 to-teal-800/10',
+      category: 'Athletic'
+    }
+  ]);
+
+  // Filter scholarships based on selected filter
+  const filteredScholarships = useMemo(() => 
+    featuredScholarships.filter(scholarship => 
+      selectedFilter === 'All' ? true : scholarship.category === selectedFilter
+    ),
+    [featuredScholarships, selectedFilter]
+  );
+
+  // Function to load wallet balance from localStorage
+  const loadWalletBalance = useCallback(() => {
+    if (isClient) {
+      const savedBalance = localStorage.getItem('walletBalance');
+      if (savedBalance) {
+        setWalletBalance(JSON.parse(savedBalance));
+      }
+    }
+  }, [isClient]);
 
   // Initialize client-side state once component is mounted
   useEffect(() => {
@@ -191,7 +197,6 @@ export default function Home() {
     
     // Check for logged in user
     const currentUser = getCurrentUser();
-    setUser(currentUser);
     
     // Load skills from localStorage
     const savedSkills = localStorage.getItem('userSkills');
@@ -302,7 +307,7 @@ export default function Home() {
         window.ethereum.removeAllListeners('chainChanged');
       }
     };
-  }, [isWalletConnected]);
+  }, [isWalletConnected, loadWalletBalance]);
 
   // Set up listeners for custom events
   useEffect(() => {
@@ -387,26 +392,6 @@ export default function Home() {
     }
   };
 
-  // Function to load wallet balance from localStorage
-  const loadWalletBalance = () => {
-    if (isClient) {
-      const savedBalance = localStorage.getItem('walletBalance');
-      if (savedBalance) {
-        setWalletBalance(JSON.parse(savedBalance));
-      }
-    }
-  };
-
-  // Function to reset application data
-  const resetApplication = () => {
-    setApplicationData(null);
-    
-    // Remove from localStorage only on client side
-    if (isClient) {
-      localStorage.removeItem('applicationData');
-    }
-  };
-
   // Function to add a new skill
   const addSkill = () => {
     if (skillInput.trim() !== '' && !userSkills.includes(skillInput.trim())) {
@@ -430,25 +415,6 @@ export default function Home() {
     if (isClient) {
       localStorage.setItem('userSkills', JSON.stringify(updatedSkills));
     }
-  };
-
-  // Function to get scholarship name from type
-  const getScholarshipName = (type: string) => {
-    switch (type) {
-      case 'STEM': return 'STEM Scholarship';
-      case 'Arts': return 'Arts Scholarship';
-      case 'Athletic': return 'Athletic Scholarship';
-      case 'Research': return 'Research Grant';
-      case 'Technology': return 'Technology Innovation';
-      default: return type;
-    }
-  };
-
-  // Function to handle user logout
-  const handleLogout = () => {
-    logoutUser();
-    setUser(null);
-    // You may want to reset some user-specific state here
   };
 
   // Function to handle donation completion
@@ -510,51 +476,6 @@ export default function Home() {
     setSearchResults([]);
   };
 
-  // Featured scholarships data with categories
-  const featuredScholarships: Scholarship[] = [
-    {
-      id: '1',
-      title: 'STEM Scholarship',
-      amount: '0.08 ETH',
-      deadline: 'Jun 1, 2024',
-      applicants: 178,
-      tags: ['Web3', 'Blockchain', 'Innovation'],
-      progress: 65,
-      icon: '🧬',
-      gradientClass: 'from-blue-900/40 to-blue-800/10',
-      category: 'STEM'
-    },
-    {
-      id: '2',
-      title: 'Arts Scholarship',
-      amount: '0.05 ETH',
-      deadline: 'Jun 1, 2024',
-      applicants: 178,
-      tags: ['Web3', 'Blockchain', 'Innovation'],
-      progress: 65,
-      icon: '🎨',
-      gradientClass: 'from-purple-900/40 to-purple-800/10',
-      category: 'Arts'
-    },
-    {
-      id: '3',
-      title: 'Athletic Scholarship',
-      amount: '0.09 ETH',
-      deadline: 'Jun 1, 2024',
-      applicants: 178,
-      tags: ['Web3', 'Blockchain', 'Innovation'],
-      progress: 65,
-      icon: '⚽',
-      gradientClass: 'from-teal-900/40 to-teal-800/10',
-      category: 'Athletic'
-    }
-  ];
-
-  // Filter scholarships based on selected filter
-  const filteredScholarships = featuredScholarships.filter(scholarship => 
-    selectedFilter === 'All' ? true : scholarship.category === selectedFilter
-  );
-
   // Additional filter options
   const additionalFilters = [
     'Amount: High to Low',
@@ -572,7 +493,23 @@ export default function Home() {
 
   // Function to sort scholarships
   const handleSort = (sortType: string) => {
-    // Implementation for sorting can be added here
+    const sortedScholarships = [...featuredScholarships].sort((a, b) => {
+      switch (sortType) {
+        case 'Amount: High to Low':
+          return parseFloat(b.amount) - parseFloat(a.amount);
+        case 'Amount: Low to High':
+          return parseFloat(a.amount) - parseFloat(b.amount);
+        case 'Deadline: Closest':
+          return new Date(a.deadline).getTime() - new Date(b.deadline).getTime();
+        case 'Most Popular':
+          return b.applicants - a.applicants;
+        case 'Recently Added':
+          return b.progress - a.progress;
+        default:
+          return 0;
+      }
+    });
+    setFeaturedScholarships(sortedScholarships);
     setShowFilterDropdown(false);
   };
 
@@ -616,23 +553,6 @@ export default function Home() {
   }, []);
 
   // Add these helper functions near the top of the component
-  const calculateTotalScholarships = () => {
-    return filteredScholarships.length;
-  };
-
-  const calculateTotalAwarded = () => {
-    return filteredScholarships.reduce((total, scholarship) => {
-      const amount = parseInt(scholarship.amount.replace(/[^0-9]/g, ''));
-      return total + amount;
-    }, 0);
-  };
-
-  const calculateTotalStudents = () => {
-    return filteredScholarships.reduce((total, scholarship) => {
-      return total + scholarship.applicants;
-    }, 0);
-  };
-
   const formatDonationTime = (timestamp: number) => {
     const seconds = Math.floor((Date.now() - timestamp) / 1000);
     if (seconds < 60) return `${seconds}s ago`;
@@ -666,36 +586,6 @@ export default function Home() {
     };
   }, [isProfileDropdownOpen]);
 
-  const handleAddSkill = useCallback((e: React.FormEvent) => {
-    e.preventDefault();
-    if (newSkill.trim() && !skills.includes(newSkill.trim())) {
-      setSkills(prev => [...prev, newSkill.trim()]);
-      setNewSkill('');
-    }
-  }, [newSkill, skills]);
-
-  const handleRemoveSkill = useCallback((skillToRemove: string) => {
-    setSkills(prev => prev.filter(skill => skill !== skillToRemove));
-  }, []);
-
-  useEffect(() => {
-    const updateKolkataTime = () => {
-      const time = new Date().toLocaleTimeString('en-US', {
-        timeZone: 'Asia/Kolkata',
-        hour12: false,
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit'
-      });
-      setKolkataTime(time);
-    };
-
-    updateKolkataTime();
-    const interval = setInterval(updateKolkataTime, 1000);
-
-    return () => clearInterval(interval);
-  }, []);
-
   const handleAskGroqClick = () => {
     if (chatbotRef.current) {
       chatbotRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -715,7 +605,6 @@ export default function Home() {
   // Function to handle scholarship selection
   const handleScholarshipSelect = (scholarship: Scholarship) => {
     setSelectedScholarship(scholarship);
-    setScholarshipAmount(scholarship.amount);
     setIsScholarshipFormOpen(true);
     setShowScholarshipList(false);
   };
@@ -749,8 +638,7 @@ export default function Home() {
   ];
 
   const handleGetFunded = async () => {
-    setFundingStatus('pending');
-    setFundingStatusMessage('');
+    setFundingStatusMessage('Transaction sent! Waiting for confirmation...');
     if (!submittedScholarship || !isWalletConnected) {
       setFundingStatusMessage('No scholarship or wallet not connected.');
       return;
@@ -771,13 +659,11 @@ export default function Home() {
         userAddress,
         { value: ethers.utils.parseEther(ethAmount.toString()) }
       );
-      setFundingStatusMessage('Transaction sent! Waiting for confirmation...');
       await tx.wait();
-      setFundingStatus('approved');
       setFundingStatusMessage('Funding successful! ETH transferred to your wallet.');
-    } catch (err: any) {
-      setFundingStatus('rejected');
-      setFundingStatusMessage('Funding failed: ' + (err?.message || JSON.stringify(err) || 'Unknown error'));
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      setFundingStatusMessage('Funding failed: ' + errorMessage);
     }
   };
 
@@ -864,35 +750,38 @@ export default function Home() {
             </a>
             
             <div className="flex items-center gap-4">
-              {isClient && isWalletConnected && (
-                <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-green-700/20 border border-green-500/30">
-                  <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                  <span className="text-sm font-medium text-green-400">Connected</span>
-                </div>
+              {isClient && (
+                <>
+                  {isWalletConnected && (
+                    <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-green-700/20 border border-green-500/30">
+                      <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                      <span className="text-sm font-medium text-green-400">Connected</span>
+                    </div>
+                  )}
+                  <Wallet>
+                    <ConnectWallet className="navbar-connect-button">
+                      {isWalletConnected ? 'Wallet Connected' : 'Connect Wallet'}
+                    </ConnectWallet>
+                    <WalletDropdown className="navbar-dropdown">
+                      <Identity className="px-4 py-3">
+                        <Avatar />
+                        <Name />
+                        <Address />
+                        <EthBalance />
+                      </Identity>
+                      <WalletDropdownLink
+                        icon="wallet"
+                        href="https://keys.coinbase.com"
+                        target="_blank"
+                        className="navbar-dropdown-item"
+                      >
+                        Wallet
+                      </WalletDropdownLink>
+                      <WalletDropdownDisconnect className="navbar-dropdown-item" />
+                    </WalletDropdown>
+                  </Wallet>
+                </>
               )}
-              
-              <Wallet>
-                <ConnectWallet className="navbar-connect-button">
-                  {isWalletConnected ? 'Wallet Connected' : 'Connect Wallet'}
-                </ConnectWallet>
-                <WalletDropdown className="navbar-dropdown">
-                  <Identity className="px-4 py-3">
-                    <Avatar />
-                    <Name />
-                    <Address />
-                    <EthBalance />
-                  </Identity>
-                  <WalletDropdownLink
-                    icon="wallet"
-                    href="https://keys.coinbase.com"
-                    target="_blank"
-                    className="navbar-dropdown-item"
-                  >
-                    Wallet
-                  </WalletDropdownLink>
-                  <WalletDropdownDisconnect className="navbar-dropdown-item" />
-                </WalletDropdown>
-              </Wallet>
             </div>
 
             {/* Profile Button */}
@@ -1645,10 +1534,12 @@ export default function Home() {
                   }}
                 >
                   <div className="flex items-center gap-3">
-                    <img
+                    <Image
                       src={session?.user?.image || 'https://randomuser.me/api/portraits/lego/1.jpg'}
                       alt="User Avatar"
-                      className="w-12 h-12 rounded-full border-2 border-blue-300 shadow"
+                      width={48}
+                      height={48}
+                      className="rounded-full border-2 border-blue-300 shadow"
                     />
                     <span className="font-semibold text-blue-900">{session?.user?.name || 'Anonymous'}</span>
                   </div>
@@ -1688,10 +1579,12 @@ export default function Home() {
                   )}
                   {reviews.map((review, idx) => (
                     <div key={idx} className="flex items-start gap-4 bg-white/80 rounded-xl p-4 border border-blue-100 shadow-sm hover:shadow-lg transition-all">
-                      <img
+                      <Image
                         src={review.avatar || 'https://randomuser.me/api/portraits/lego/1.jpg'}
                         alt="User Avatar"
-                        className="w-14 h-14 rounded-full border-2 border-blue-200 shadow"
+                        width={56}
+                        height={56}
+                        className="rounded-full border-2 border-blue-200 shadow"
                       />
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
@@ -1805,7 +1698,7 @@ export default function Home() {
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {featuredScholarships.map((scholarship) => (
+              {featuredScholarships.map((scholarship: Scholarship) => (
                 <div
                   key={scholarship.id}
                   onClick={() => handleScholarshipSelect(scholarship)}
@@ -1823,7 +1716,7 @@ export default function Home() {
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-2 mt-4">
-                    {scholarship.tags.map((tag, index) => (
+                    {scholarship.tags.map((tag: string, index: number) => (
                       <span
                         key={index}
                         className="px-3 py-1 bg-blue-500/20 border border-blue-500/30 rounded-full text-sm text-blue-300"

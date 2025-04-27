@@ -7,7 +7,14 @@ const nextConfig = {
       'react-icons': 'react-icons'
     }
     return config
-  }
+  },
+  images: {
+    domains: [
+      'randomuser.me',
+      'images.unsplash.com',
+      'lh3.googleusercontent.com'
+    ],
+  },
 }
 
 module.exports = nextConfig 

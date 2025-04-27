@@ -13,7 +13,7 @@ const handler = NextAuth({
     error: '/signin', // Error code passed in query string as ?error=
   },
   callbacks: {
-    async signIn({ user, account, profile }) {
+    async signIn({ user }) {
       // Allow all users to sign in
       return true;
     },
@@ -29,7 +29,7 @@ const handler = NextAuth({
       }
       return session;
     },
-    async jwt({ token, user, account, profile }) {
+    async jwt({ token, user }) {
       if (user) {
         // Add user data to the token
         token.id = user.id;
